@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"net/http"
-	"net/url"
 	"time"
 )
 
@@ -11,49 +10,45 @@ func HealthCheck() {
 	ticker := time.NewTicker(time.Duration(Configuration.Duration) * time.Second)
 	defer ticker.Stop()
 
+	client := &http.Client{Timeout: 2 * time.Second}
+
 	for range ticker.C {
 		configMu.RLock()
-		urls := make([]*url.URL, len(Configuration.Backends))
+		type checkData struct {
+			idx    int
+			urlStr string
+			chkUrl string
+		}
+		var checks []checkData
 		route := Configuration.HealthCheckRoute
 
 		for i, b := range Configuration.Backends {
-			parsedUrl, err := url.Parse(b.Url)
-			if err != nil {
-				continue
+			if b.parsed != nil {
+				checks = append(checks, checkData{
+					idx:    i,
+					urlStr: b.Url,
+					chkUrl: b.parsed.Scheme + "://" + b.parsed.Host + route,
+				})
 			}
-			urls[i] = parsedUrl
 		}
 		configMu.RUnlock()
 
-		for i, url := range urls {
-			if url == nil {
-				configMu.Lock()
-				Configuration.Backends[i].Health = false
-				configMu.Unlock()
-				continue
+		for _, check := range checks {
+			res, err := client.Get(check.chkUrl)
+			isHealthy := err == nil && res.StatusCode == http.StatusOK
+			if res != nil {
+				res.Body.Close()
 			}
-
-			healthUrl := url.Scheme + "://" + url.Host + route
-			res, err := http.Get(healthUrl)
 
 			configMu.Lock()
-			if err != nil {
-				Configuration.Backends[i].Health = false
-				configMu.Unlock()
-				continue
-			}
-
-			res.Body.Close()
-
-			if res.StatusCode == http.StatusOK {
-				Configuration.Backends[i].Health = true
-			} else {
-				Configuration.Backends[i].Health = false
+			if check.idx < len(Configuration.Backends) && Configuration.Backends[check.idx].Url == check.urlStr {
+				Configuration.Backends[check.idx].Health = isHealthy
 			}
 			configMu.Unlock()
 		}
+
 		configMu.RLock()
-		fmt.Print(Configuration.Backends)
+		fmt.Printf("Health Check Completed. Total Backends: %d\n", len(Configuration.Backends))
 		configMu.RUnlock()
 	}
 }

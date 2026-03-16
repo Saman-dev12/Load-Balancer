@@ -1,28 +1,25 @@
 package main
 
 import (
-	"sync"
+	"sync/atomic"
 )
 
-var (
-	currentIndex int
-	lbMu         sync.Mutex
-)
+var rrIndex uint64
 
 func GetNextBackend() *Backend {
-	configMu.Lock()
-	defer configMu.Unlock()
+	configMu.RLock()
+	defer configMu.RUnlock()
 
-	lbMu.Lock()
-	defer lbMu.Unlock()
+	n := uint64(len(Configuration.Backends))
 
-	n := len(Configuration.Backends)
+	if n == 0 {
+		return nil
+	}
 
-	for i := 0; i < n; i++ {
-		idx := (currentIndex + i) % n
+	for i := uint64(0); i < n; i++ {
+		idx := atomic.AddUint64(&rrIndex, 1) % n
 
 		if Configuration.Backends[idx].Health {
-			currentIndex = idx + 1
 			return &Configuration.Backends[idx]
 		}
 	}

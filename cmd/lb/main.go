@@ -13,6 +13,8 @@ import (
 type Backend struct {
 	Url    string
 	Health bool
+	parsed *url.URL
+	proxy  *httputil.ReverseProxy
 }
 
 type Config struct {
@@ -54,25 +56,16 @@ var (
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	backend := GetNextBackend()
 
-	if backend == nil {
+	if backend == nil || backend.proxy == nil {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{"error": "No backend found"})
+		json.NewEncoder(w).Encode(map[string]string{"error": "No healthy backend available"})
 		return
 	}
 
-	target, err := url.Parse(backend.Url)
-
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Invalid URL"})
-		return
-	}
-
-	proxy := httputil.NewSingleHostReverseProxy(target)
-	proxy.ServeHTTP(w, r)
+	backend.proxy.ServeHTTP(w, r)
 }
 
 func register(w http.ResponseWriter, r *http.Request) {
@@ -93,6 +86,18 @@ func register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg.CheckAndCorrectConfig()
+
+	for i := range cfg.Backends {
+		parsedURL, err := url.Parse(cfg.Backends[i].Url)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "invalid URL: " + cfg.Backends[i].Url})
+			return
+		}
+		cfg.Backends[i].parsed = parsedURL
+		cfg.Backends[i].proxy = httputil.NewSingleHostReverseProxy(parsedURL)
+		cfg.Backends[i].Health = true
+	}
 
 	configMu.Lock()
 	Configuration = cfg
