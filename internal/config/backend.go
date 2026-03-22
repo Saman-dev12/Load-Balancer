@@ -6,8 +6,9 @@ import (
 )
 
 type Backend struct {
-	Url    string
-	Health bool
-	Parsed *url.URL
-	Proxy  *httputil.ReverseProxy
+	Url        string
+	Health     bool
+	Parsed     *url.URL
+	ActiveConn int64
+	Proxy      *httputil.ReverseProxy
 }

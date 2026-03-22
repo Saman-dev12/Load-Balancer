@@ -22,6 +22,12 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer func() {
+		if loadbalancer.Configuration.Algorithm == "Least Connections" {
+			loadbalancer.DecrementBackendConn(backend)
+		}
+	}()
+
 	backend.Proxy.ServeHTTP(w, r)
 }
 
