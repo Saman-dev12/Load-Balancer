@@ -7,72 +7,29 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"sync"
-)
 
-type Backend struct {
-	Url    string
-	Health bool
-	parsed *url.URL
-	proxy  *httputil.ReverseProxy
-}
-
-type Config struct {
-	Backends            []Backend
-	HealthCheckRoute    string
-	Duration            int
-	MinRequestThreshold int
-	MaxRequestThreshold int
-	Algorithm           string
-}
-
-func (c *Config) CheckAndCorrectConfig() {
-	if c.HealthCheckRoute == "" {
-		c.HealthCheckRoute = "/health"
-	}
-
-	if c.Duration == 0 {
-		c.Duration = 300
-	}
-
-	if c.MinRequestThreshold == 0 {
-		c.MinRequestThreshold = 1
-	}
-
-	if c.MaxRequestThreshold == 0 {
-		c.MaxRequestThreshold = 5
-	}
-
-	if c.Algorithm == "" {
-		c.Algorithm = "Round Robin"
-	}
-
-}
-
-var (
-	Configuration   Config
-	configMu        sync.RWMutex
-	healthCheckOnce sync.Once
+	"github.com/Saman-dev12/lb/internal/config"
+	"github.com/Saman-dev12/lb/internal/loadbalancer"
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	backend := GetNextBackend()
+	backend := loadbalancer.GetNextBackend(r)
 
-	if backend == nil || backend.proxy == nil {
+	if backend == nil || backend.Proxy == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		json.NewEncoder(w).Encode(map[string]string{"error": "No healthy backend available"})
 		return
 	}
 
-	backend.proxy.ServeHTTP(w, r)
+	backend.Proxy.ServeHTTP(w, r)
 }
 
 func register(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	defer r.Body.Close()
 
-	var cfg Config
+	var cfg config.Config
 	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -94,17 +51,17 @@ func register(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": "invalid URL: " + cfg.Backends[i].Url})
 			return
 		}
-		cfg.Backends[i].parsed = parsedURL
-		cfg.Backends[i].proxy = httputil.NewSingleHostReverseProxy(parsedURL)
+		cfg.Backends[i].Parsed = parsedURL
+		cfg.Backends[i].Proxy = httputil.NewSingleHostReverseProxy(parsedURL)
 		cfg.Backends[i].Health = true
 	}
 
-	configMu.Lock()
-	Configuration = cfg
-	configMu.Unlock()
+	loadbalancer.ConfigMu.Lock()
+	loadbalancer.Configuration = cfg
+	loadbalancer.ConfigMu.Unlock()
 
-	healthCheckOnce.Do(func() {
-		go HealthCheck()
+	loadbalancer.HealthOnce.Do(func() {
+		go loadbalancer.HealthCheck()
 	})
 
 	w.WriteHeader(http.StatusOK)
@@ -126,5 +83,4 @@ func main() {
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
-
 }

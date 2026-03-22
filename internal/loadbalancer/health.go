@@ -1,10 +1,16 @@
-package main
+package loadbalancer
 
 import (
 	"fmt"
 	"net/http"
 	"time"
 )
+
+type checkData struct {
+	idx    int
+	urlStr string
+	chkUrl string
+}
 
 func HealthCheck() {
 	ticker := time.NewTicker(time.Duration(Configuration.Duration) * time.Second)
@@ -13,25 +19,21 @@ func HealthCheck() {
 	client := &http.Client{Timeout: 2 * time.Second}
 
 	for range ticker.C {
-		configMu.RLock()
-		type checkData struct {
-			idx    int
-			urlStr string
-			chkUrl string
-		}
+		ConfigMu.RLock()
+
 		var checks []checkData
 		route := Configuration.HealthCheckRoute
 
 		for i, b := range Configuration.Backends {
-			if b.parsed != nil {
+			if b.Parsed != nil {
 				checks = append(checks, checkData{
 					idx:    i,
 					urlStr: b.Url,
-					chkUrl: b.parsed.Scheme + "://" + b.parsed.Host + route,
+					chkUrl: b.Parsed.Scheme + "://" + b.Parsed.Host + route,
 				})
 			}
 		}
-		configMu.RUnlock()
+		ConfigMu.RUnlock()
 
 		for _, check := range checks {
 			res, err := client.Get(check.chkUrl)
@@ -40,15 +42,15 @@ func HealthCheck() {
 				res.Body.Close()
 			}
 
-			configMu.Lock()
+			ConfigMu.Lock()
 			if check.idx < len(Configuration.Backends) && Configuration.Backends[check.idx].Url == check.urlStr {
 				Configuration.Backends[check.idx].Health = isHealthy
 			}
-			configMu.Unlock()
+			ConfigMu.Unlock()
 		}
 
-		configMu.RLock()
+		ConfigMu.RLock()
 		fmt.Printf("Health Check Completed. Total Backends: %d\n", len(Configuration.Backends))
-		configMu.RUnlock()
+		ConfigMu.RUnlock()
 	}
 }
