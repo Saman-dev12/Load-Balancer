@@ -17,36 +17,32 @@ var (
 	rrIndex       uint64
 )
 
-func GetNextBackend(req *http.Request) (*config.Backend, bool) {
+func GetNextBackend(req *http.Request) *config.Backend {
 	ConfigMu.RLock()
 	defer ConfigMu.RUnlock()
 
 	n := uint64(len(Configuration.Backends))
 
 	if n == 0 {
-		return nil, false
+		return nil
 	}
 
 	switch Configuration.Algorithm {
 	case "Round Robin":
-		return getRoundRobinBackend(n), false
+		return getRoundRobinBackend(n)
 	case "Random":
-		return getRandomBackend(n), false
+		return getRandomBackend(n)
 	case "IP Hashing":
-		if req == nil {
-			return getRoundRobinBackend(n), false
-		}
-		return getIPHashingBackend(req.RemoteAddr, n), false
+		return getIPHashingBackend(req.RemoteAddr, n)
 	case "Least Connections":
 		backend := leastConnectionBackend(n)
 		if backend != nil {
 			atomic.AddInt64(&backend.ActiveConn, 1)
-			return backend, true
 		}
-		return nil, false
+		return backend
 	}
 
-	return getRoundRobinBackend(n), false
+	return nil
 }
 
 func getRandomBackend(n uint64) *config.Backend {
