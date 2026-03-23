@@ -10,6 +10,6 @@ type Backend struct {
 	Url        string
 	Health     bool
 	Parsed     *url.URL
-	ActiveConn atomic.Int64
+	ActiveConn atomic.Int64 `json:"-" yaml:"-"`
 	Proxy      *httputil.ReverseProxy
 }

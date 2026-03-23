@@ -24,8 +24,12 @@ type BackendLease struct {
 }
 
 func (l *BackendLease) Release() {
-	if l != nil && l.release != nil {
+	if l == nil {
+		return
+	}
+	if l.release != nil {
 		l.release()
+		l.release = nil
 	}
 }
 
@@ -128,10 +132,4 @@ func returnHealthyBackend(idx int) *config.Backend {
 		return &Configuration.Backends[idx]
 	}
 	return nil
-}
-
-func DecrementBackendConn(backend *config.Backend) {
-	if backend != nil {
-		backend.ActiveConn.Add(-1)
-	}
 }
