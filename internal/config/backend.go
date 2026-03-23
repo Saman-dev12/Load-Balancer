@@ -3,12 +3,13 @@ package config
 import (
 	"net/http/httputil"
 	"net/url"
+	"sync/atomic"
 )
 
 type Backend struct {
 	Url        string
 	Health     bool
 	Parsed     *url.URL
-	ActiveConn int64
+	ActiveConn atomic.Int64
 	Proxy      *httputil.ReverseProxy
 }

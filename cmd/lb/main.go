@@ -13,7 +13,9 @@ import (
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	backend := loadbalancer.GetNextBackend(r)
+	lease := loadbalancer.GetNextBackend(r)
+	defer lease.Release()
+	backend := lease.Backend
 
 	if backend == nil || backend.Proxy == nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -21,12 +23,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "No healthy backend available"})
 		return
 	}
-
-	defer func() {
-		if loadbalancer.Configuration.Algorithm == "Least Connections" {
-			loadbalancer.DecrementBackendConn(backend)
-		}
-	}()
 
 	backend.Proxy.ServeHTTP(w, r)
 }

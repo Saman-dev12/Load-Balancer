@@ -15,34 +15,55 @@ var (
 	ConfigMu      sync.RWMutex
 	HealthOnce    sync.Once
 	rrIndex       uint64
+	LeastMu       sync.Mutex
 )
 
-func GetNextBackend(req *http.Request) *config.Backend {
+type BackendLease struct {
+	Backend *config.Backend
+	release func()
+}
+
+func (l *BackendLease) Release() {
+	if l != nil && l.release != nil {
+		l.release()
+	}
+}
+
+func GetNextBackend(req *http.Request) *BackendLease {
 	ConfigMu.RLock()
 	defer ConfigMu.RUnlock()
 
 	n := uint64(len(Configuration.Backends))
 
 	if n == 0 {
-		return nil
+		return &BackendLease{}
 	}
 
 	switch Configuration.Algorithm {
 	case "Round Robin":
-		return getRoundRobinBackend(n)
+		return &BackendLease{Backend: getRoundRobinBackend(n)}
 	case "Random":
-		return getRandomBackend(n)
+		return &BackendLease{Backend: getRandomBackend(n)}
 	case "IP Hashing":
-		return getIPHashingBackend(req.RemoteAddr, n)
+		if req == nil {
+			return &BackendLease{Backend: getRoundRobinBackend(n)}
+		}
+		return &BackendLease{Backend: getIPHashingBackend(req.RemoteAddr, n)}
 	case "Least Connections":
+		LeastMu.Lock()
+		defer LeastMu.Unlock()
 		backend := leastConnectionBackend(n)
 		if backend != nil {
-			atomic.AddInt64(&backend.ActiveConn, 1)
+			backend.ActiveConn.Add(1)
+			return &BackendLease{
+				Backend: backend,
+				release: func() { backend.ActiveConn.Add(-1) },
+			}
 		}
-		return backend
+		return &BackendLease{}
 	}
 
-	return nil
+	return &BackendLease{Backend: getRoundRobinBackend(n)}
 }
 
 func getRandomBackend(n uint64) *config.Backend {
@@ -93,7 +114,7 @@ func leastConnectionBackend(n uint64) *config.Backend {
 			continue
 		}
 
-		conns := atomic.LoadInt64(&Configuration.Backends[i].ActiveConn)
+		conns := Configuration.Backends[i].ActiveConn.Load()
 		if minConn == -1 || conns < minConn {
 			minConn = conns
 			bestBackend = &Configuration.Backends[i]
@@ -111,6 +132,6 @@ func returnHealthyBackend(idx int) *config.Backend {
 
 func DecrementBackendConn(backend *config.Backend) {
 	if backend != nil {
-		atomic.AddInt64(&backend.ActiveConn, -1)
+		backend.ActiveConn.Add(-1)
 	}
 }
