@@ -84,8 +84,10 @@ func getIPHashingBackend(clientIP string, n uint64) *config.Backend {
 func leastConnectionBackend(n uint64) *config.Backend {
 	var bestBackend *config.Backend
 	var minConn int64 = -1
+	start := int(atomic.AddUint64(&rrIndex, 1) % n)
 
-	for i := 0; i < int(n); i++ {
+	for j := 0; j < int(n); j++ {
+		i := (start + j) % int(n)
 		// Only consider healthy backends
 		if !Configuration.Backends[i].Health {
 			continue
