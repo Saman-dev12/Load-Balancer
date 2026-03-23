@@ -71,6 +71,15 @@ func register(w http.ResponseWriter, r *http.Request) {
 }
 
 func status(w http.ResponseWriter, r *http.Request) {
+	loadbalancer.ConfigMu.RLock()
+	if loadbalancer.Configuration.Algorithm == "" || len(loadbalancer.Configuration.Backends) == 0 {
+		loadbalancer.ConfigMu.RUnlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Please register the load balancer first"})
+		return
+	}
+
 	type backendStatus struct {
 		URL        string `json:"url"`
 		Health     bool   `json:"health"`
@@ -84,7 +93,6 @@ func status(w http.ResponseWriter, r *http.Request) {
 		Backends         []backendStatus `json:"backends"`
 	}
 
-	loadbalancer.ConfigMu.RLock()
 	resp := statusResponse{
 		Algorithm:        loadbalancer.Configuration.Algorithm,
 		HealthCheckRoute: loadbalancer.Configuration.HealthCheckRoute,
