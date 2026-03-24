@@ -70,12 +70,57 @@ func register(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "Configuration registered successfully"})
 }
 
+func status(w http.ResponseWriter, r *http.Request) {
+	loadbalancer.ConfigMu.RLock()
+	if loadbalancer.Configuration.Algorithm == "" || len(loadbalancer.Configuration.Backends) == 0 {
+		loadbalancer.ConfigMu.RUnlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Please register the load balancer first"})
+		return
+	}
+
+	type backendStatus struct {
+		URL        string `json:"url"`
+		Health     bool   `json:"health"`
+		ActiveConn int64  `json:"activeConn"`
+	}
+
+	type statusResponse struct {
+		Algorithm        string          `json:"algorithm"`
+		HealthCheckRoute string          `json:"healthCheckRoute"`
+		Duration         int             `json:"duration"`
+		Backends         []backendStatus `json:"backends"`
+	}
+
+	resp := statusResponse{
+		Algorithm:        loadbalancer.Configuration.Algorithm,
+		HealthCheckRoute: loadbalancer.Configuration.HealthCheckRoute,
+		Duration:         loadbalancer.Configuration.Duration,
+		Backends:         make([]backendStatus, 0, len(loadbalancer.Configuration.Backends)),
+	}
+
+	for i := range loadbalancer.Configuration.Backends {
+		backend := loadbalancer.Configuration.Backends[i]
+		resp.Backends = append(resp.Backends, backendStatus{
+			URL:        backend.Url,
+			Health:     backend.Health,
+			ActiveConn: backend.ActiveConn.Load(),
+		})
+	}
+	loadbalancer.ConfigMu.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(resp)
+}
+
 func main() {
 	r := http.NewServeMux()
 
 	r.HandleFunc("/", handler)
-	r.HandleFunc("/register", register)
-
+	r.HandleFunc("POST /register", register)
+	r.HandleFunc("GET /status", status)
 	port := ":8888"
 	server := &http.Server{
 		Addr:    port,
