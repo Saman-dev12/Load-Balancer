@@ -101,7 +101,7 @@ func status(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for i := range loadbalancer.Configuration.Backends {
-		backend := loadbalancer.Configuration.Backends[i]
+		backend := &loadbalancer.Configuration.Backends[i]
 		resp.Backends = append(resp.Backends, backendStatus{
 			URL:        backend.Url,
 			Health:     backend.Health,
