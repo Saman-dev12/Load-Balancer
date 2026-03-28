@@ -16,7 +16,15 @@ var (
 	HealthOnce    sync.Once
 	rrIndex       uint64
 	LeastMu       sync.Mutex
+	strategies    = map[string]BackendSelectionStrategy{
+		"Round Robin":       roundRobinStrategy,
+		"Random":            randomStrategy,
+		"IP Hashing":        ipHashingStrategy,
+		"Least Connections": leastConnectionsStrategy,
+	}
 )
+
+type BackendSelectionStrategy func(req *http.Request, n uint64) *BackendLease
 
 type BackendLease struct {
 	Backend *config.Backend
@@ -43,31 +51,43 @@ func GetNextBackend(req *http.Request) *BackendLease {
 		return &BackendLease{}
 	}
 
-	switch Configuration.Algorithm {
-	case "Round Robin":
-		return &BackendLease{Backend: getRoundRobinBackend(n)}
-	case "Random":
-		return &BackendLease{Backend: getRandomBackend(n)}
-	case "IP Hashing":
-		if req == nil {
-			return &BackendLease{Backend: getRoundRobinBackend(n)}
-		}
-		return &BackendLease{Backend: getIPHashingBackend(req.RemoteAddr, n)}
-	case "Least Connections":
-		LeastMu.Lock()
-		defer LeastMu.Unlock()
-		backend := leastConnectionBackend(n)
-		if backend != nil {
-			backend.ActiveConn.Add(1)
-			return &BackendLease{
-				Backend: backend,
-				release: func() { backend.ActiveConn.Add(-1) },
-			}
-		}
-		return &BackendLease{}
+	strategy, ok := strategies[Configuration.Algorithm]
+	if !ok {
+		strategy = roundRobinStrategy
 	}
 
+	return strategy(req, n)
+}
+
+func roundRobinStrategy(_ *http.Request, n uint64) *BackendLease {
 	return &BackendLease{Backend: getRoundRobinBackend(n)}
+}
+
+func randomStrategy(_ *http.Request, n uint64) *BackendLease {
+	return &BackendLease{Backend: getRandomBackend(n)}
+}
+
+func ipHashingStrategy(req *http.Request, n uint64) *BackendLease {
+	if req == nil {
+		return &BackendLease{Backend: getRoundRobinBackend(n)}
+	}
+	return &BackendLease{Backend: getIPHashingBackend(req.RemoteAddr, n)}
+}
+
+func leastConnectionsStrategy(_ *http.Request, n uint64) *BackendLease {
+	LeastMu.Lock()
+	defer LeastMu.Unlock()
+
+	backend := leastConnectionBackend(n)
+	if backend != nil {
+		backend.ActiveConn.Add(1)
+		return &BackendLease{
+			Backend: backend,
+			release: func() { backend.ActiveConn.Add(-1) },
+		}
+	}
+
+	return &BackendLease{}
 }
 
 func getRandomBackend(n uint64) *config.Backend {
