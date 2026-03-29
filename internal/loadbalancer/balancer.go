@@ -3,6 +3,7 @@ package loadbalancer
 import (
 	"hash/fnv"
 	"math/rand"
+	"net"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -16,7 +17,7 @@ var (
 	HealthOnce    sync.Once
 	rrIndex       uint64
 	LeastMu       sync.Mutex
-	strategies    = map[string]BackendSelectionStrategy{
+	strategies    = map[string]backendSelectionStrategy{
 		"Round Robin":       roundRobinStrategy,
 		"Random":            randomStrategy,
 		"IP Hashing":        ipHashingStrategy,
@@ -24,7 +25,7 @@ var (
 	}
 )
 
-type BackendSelectionStrategy func(req *http.Request, n uint64) *BackendLease
+type backendSelectionStrategy func(req *http.Request, n uint64) *BackendLease
 
 type BackendLease struct {
 	Backend *config.Backend
@@ -71,7 +72,11 @@ func ipHashingStrategy(req *http.Request, n uint64) *BackendLease {
 	if req == nil {
 		return &BackendLease{Backend: getRoundRobinBackend(n)}
 	}
-	return &BackendLease{Backend: getIPHashingBackend(req.RemoteAddr, n)}
+	clientIP, _, err := net.SplitHostPort(req.RemoteAddr)
+	if err != nil {
+		return &BackendLease{Backend: getIPHashingBackend(req.RemoteAddr, n)}
+	}
+	return &BackendLease{Backend: getIPHashingBackend(clientIP, n)}
 }
 
 func leastConnectionsStrategy(_ *http.Request, n uint64) *BackendLease {
