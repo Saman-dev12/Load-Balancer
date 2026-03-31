@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 
 	"github.com/Saman-dev12/lb/internal/config"
 	"github.com/Saman-dev12/lb/internal/loadbalancer"
@@ -115,18 +116,31 @@ func status(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+func healthz(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
 func main() {
 	r := http.NewServeMux()
 
 	r.HandleFunc("/", handler)
 	r.HandleFunc("POST /register", register)
 	r.HandleFunc("GET /status", status)
-	port := ":8888"
+	r.HandleFunc("GET /healthz", healthz)
+
+	port := os.Getenv("LB_PORT")
+	if port == "" {
+		port = "8888"
+	}
+	addr := ":" + port
+
 	server := &http.Server{
-		Addr:    port,
+		Addr:    addr,
 		Handler: r,
 	}
-	fmt.Println("Server is listening on port 8888")
+	fmt.Printf("Server is listening on port %s\n", port)
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
