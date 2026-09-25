@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"os"
 
 	"github.com/Saman-dev12/lb/internal/config"
 	"github.com/Saman-dev12/lb/internal/loadbalancer"
+	"github.com/Saman-dev12/lb/internal/proxy"
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +55,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		cfg.Backends[i].Parsed = parsedURL
-		cfg.Backends[i].Proxy = httputil.NewSingleHostReverseProxy(parsedURL)
+		cfg.Backends[i].Proxy = proxy.NewCustomReverseProxy(parsedURL)
 		cfg.Backends[i].Health = true
 	}
 
