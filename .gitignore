@@ -5,6 +5,4 @@
 
 # Go workspace files
 go.work
-go.work.sum
-
-test
+go.work.sum
