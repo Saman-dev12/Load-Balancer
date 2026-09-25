@@ -121,7 +121,7 @@ func getIPHashingBackend(clientIP string, n uint64) *config.Backend {
 	h.Write([]byte(clientIP))
 	hashValue := h.Sum32()
 
-	start := int(hashValue) % int(n)
+	start := int(hashValue % uint32(n))
 	for i := 0; i < int(n); i++ {
 		idx := (start + i) % int(n)
 		if backend := returnHealthyBackend(idx); backend != nil {
@@ -138,7 +138,6 @@ func leastConnectionBackend(n uint64) *config.Backend {
 
 	for j := 0; j < int(n); j++ {
 		i := (start + j) % int(n)
-		// Only consider healthy backends
 		if !Configuration.Backends[i].Health {
 			continue
 		}

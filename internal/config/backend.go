@@ -1,9 +1,10 @@
 package config
 
 import (
-	"net/http/httputil"
 	"net/url"
 	"sync/atomic"
+
+	"github.com/Saman-dev12/lb/internal/proxy"
 )
 
 type Backend struct {
@@ -11,5 +12,6 @@ type Backend struct {
 	Health     bool
 	Parsed     *url.URL
 	ActiveConn atomic.Int64 `json:"-" yaml:"-"`
-	Proxy      *httputil.ReverseProxy
+	Proxy      *proxy.ReverseProxy
 }
+
